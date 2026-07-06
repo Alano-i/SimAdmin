@@ -9,6 +9,7 @@ cd "$(dirname "$0")/.."
 
 # 默认配置
 TARGET_PATH="/opt/simadmin"
+BUILD_TARGET="${BUILD_TARGET:-}"
 DEPLOY_BACKEND=true
 DEPLOY_FRONTEND=true
 RESTART_SERVICE=true
@@ -28,6 +29,13 @@ for arg in "$@"; do
         --target=*)
             TARGET_PATH="${arg#*=}"
             ;;
+        --arch=*)
+            case "${arg#*=}" in
+                arm64|aarch64) BUILD_TARGET="aarch64-unknown-linux-musl" ;;
+                amd64|x86_64) BUILD_TARGET="x86_64-unknown-linux-musl" ;;
+                *) echo "❌ 不支持的架构: ${arg#*=}"; exit 1 ;;
+            esac
+            ;;
         --help|-h)
             echo "用法: ./scripts/deploy.sh [选项]"
             echo ""
@@ -36,6 +44,7 @@ for arg in "$@"; do
             echo "  --frontend-only  只部署前端"
             echo "  --no-restart     不重启服务（默认会停止现有服务）"
             echo "  --target=PATH    指定目标路径 (默认: /opt/simadmin)"
+            echo "  --arch=ARCH      构建产物架构: arm64 或 amd64"
             echo "  --help, -h       显示帮助信息"
             echo ""
             echo "示例:"
@@ -55,7 +64,14 @@ for arg in "$@"; do
     esac
 done
 
-BACKEND_BIN="backend/target/aarch64-unknown-linux-musl/release/simadmin"
+if [ -z "$BUILD_TARGET" ]; then
+    case "$(uname -m)" in
+        x86_64|amd64) BUILD_TARGET="x86_64-unknown-linux-musl" ;;
+        aarch64|arm64) BUILD_TARGET="aarch64-unknown-linux-musl" ;;
+        *) echo "❌ 不支持的主机架构: $(uname -m)"; exit 1 ;;
+    esac
+fi
+BACKEND_BIN="backend/target/${BUILD_TARGET}/release/simadmin"
 FRONTEND_DIR="frontend/dist"
 
 echo "🚀 通过 ADB 部署到 ${TARGET_PATH}"

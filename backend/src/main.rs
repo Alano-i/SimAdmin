@@ -76,6 +76,10 @@ fn get_www_dir() -> PathBuf {
 }
 
 fn get_data_db_path() -> PathBuf {
+    if let Some(data_dir) = std::env::var_os("SIMADMIN_DATA_DIR") {
+        return PathBuf::from(data_dir).join("data.db");
+    }
+
     std::env::current_exe()
         .expect("Failed to get executable path")
         .parent()
@@ -147,6 +151,11 @@ async fn spa_fallback(uri: Uri) -> Response {
 /// 启动后立刻通过 ExecStartPost 将日志级别降回 INFO。
 /// 这完美绕过了 Modem.Command 的 Unauthorized 限制，同时保持系统纯净。
 fn ensure_modemmanager_debug_override() {
+    if std::env::var_os("SIMADMIN_CONTAINER").is_some() {
+        tracing::info!("Container mode: skipping host systemd override for ModemManager");
+        return;
+    }
+
     let override_dir = "/etc/systemd/system/ModemManager.service.d";
     let override_file = "/etc/systemd/system/ModemManager.service.d/99-simadmin-debug.conf";
 

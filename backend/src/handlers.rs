@@ -3382,6 +3382,15 @@ pub async fn system_reboot(
     State(app): State<AppState>,
     Json(payload): Json<SystemRebootRequest>,
 ) -> impl IntoResponse {
+    if std::env::var_os("SIMADMIN_CONTAINER").is_some() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::error(
+                "Container mode does not allow host reboot; run reboot on the host",
+            )),
+        );
+    }
+
     let delay = payload.delay_seconds;
     app.system_event_emitter
         .emit_code(
@@ -3804,8 +3813,11 @@ pub async fn get_latest_ota_release_handler(
         let proxy_prefix = crate::ota::normalize_proxy_prefix(req.proxy_prefix);
         let client = crate::ota::build_ota_http_client()?;
 
-        crate::ota::fetch_latest_github_release(&client, &proxy_prefix, include_builtin_proxies)
-            .await
+        let mut release =
+            crate::ota::fetch_latest_github_release(&client, &proxy_prefix, include_builtin_proxies)
+                .await?;
+        crate::ota::prioritize_current_arch_asset(&mut release);
+        Ok(release)
     }
     .await;
 

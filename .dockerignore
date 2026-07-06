@@ -1,0 +1,13 @@
+.git
+.github
+.idea
+.vscode
+backend/target
+frontend/dist
+frontend/node_modules
+release
+*.log
+*.tar.gz
+data.db
+data.db-*
+config.json

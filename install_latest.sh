@@ -2,7 +2,7 @@
 
 set -eu
 
-REPO="${REPO:-3899/SimAdmin}"
+REPO="${REPO:-Alano-i/SimAdmin}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/simadmin}"
 SERVICE_NAME="${SERVICE_NAME:-simadmin}"
 VERSION="${VERSION:-latest}"
@@ -13,12 +13,12 @@ SERVICE_URL="${SERVICE_URL:-${RAW_BASE}/main/scripts/simadmin.service}"
 MODEM_RECOVERY_SCRIPT_URL="${MODEM_RECOVERY_SCRIPT_URL:-${RAW_BASE}/main/scripts/simadmin-modem-recovery.sh}"
 MODEM_RECOVERY_SERVICE_URL="${MODEM_RECOVERY_SERVICE_URL:-${RAW_BASE}/main/scripts/simadmin-modem-recovery.service}"
 ASSET_URL="${ASSET_URL:-}"
-ASSET_NAME="${ASSET_NAME:-simadmin.tar.gz}"
+ASSET_NAME="${ASSET_NAME:-}"
 SIMADMIN_INSTALL_LPAC="${SIMADMIN_INSTALL_LPAC:-1}"
 LPAC_REPO="${LPAC_REPO:-estkme-group/lpac}"
 LPAC_RELEASE_BASE_URL="${LPAC_RELEASE_BASE_URL:-https://github.com/${LPAC_REPO}/releases/latest/download}"
 LPAC_LATEST_RELEASE_URL="${LPAC_LATEST_RELEASE_URL:-https://github.com/${LPAC_REPO}/releases/latest}"
-LPAC_COMPAT_RELEASE_BASE_URL="${LPAC_COMPAT_RELEASE_BASE_URL:-https://github.com/3899/SimAdmin/releases/download/lpac}"
+LPAC_COMPAT_RELEASE_BASE_URL="${LPAC_COMPAT_RELEASE_BASE_URL:-https://github.com/Alano-i/SimAdmin/releases/download/lpac}"
 LPAC_COMPAT_MANIFEST_NAME="${LPAC_COMPAT_MANIFEST_NAME:-lpac.json}"
 LPAC_TARGET_ARCH="${LPAC_TARGET_ARCH:-}"
 LPAC_TARGET_VERSION="${LPAC_TARGET_VERSION:-}"
@@ -106,7 +106,28 @@ version_to_tag() {
 
 asset_url_from_tag() {
   tag="$1"
-  printf 'https://github.com/%s/releases/download/%s/simadmin.tar.gz\n' "$REPO" "$tag"
+  printf 'https://github.com/%s/releases/download/%s/%s\n' "$REPO" "$tag" "$(resolve_asset_name)"
+}
+
+normalize_simadmin_arch() {
+  case "$1" in
+    aarch64|arm64) printf '%s\n' "arm64" ;;
+    x86_64|amd64) printf '%s\n' "amd64" ;;
+    *) return 1 ;;
+  esac
+}
+
+resolve_asset_name() {
+  if [ -n "$ASSET_NAME" ]; then
+    printf '%s\n' "$ASSET_NAME"
+    return 0
+  fi
+
+  arch="$(normalize_simadmin_arch "$(uname -m)")" || {
+    echo "error: unsupported CPU architecture: $(uname -m)" >&2
+    return 1
+  }
+  printf 'simadmin-%s.tar.gz\n' "$arch"
 }
 
 repo_version() {
@@ -124,7 +145,7 @@ resolve_asset_url() {
   fi
 
   if [ "$VERSION" = "latest" ]; then
-    printf 'https://github.com/%s/releases/latest/download/%s\n' "$REPO" "$ASSET_NAME"
+    printf 'https://github.com/%s/releases/latest/download/%s\n' "$REPO" "$(resolve_asset_name)"
   else
     asset_url_from_tag "$(version_to_tag "$VERSION")"
   fi
@@ -510,7 +531,7 @@ lpac_asset_name_from_url() {
 lpac_url_source() {
   url="$1"
   case "$url" in
-    "$LPAC_COMPAT_RELEASE_BASE_URL"/*|https://github.com/3899/SimAdmin/releases/download/lpac/*)
+    "$LPAC_COMPAT_RELEASE_BASE_URL"/*|https://github.com/Alano-i/SimAdmin/releases/download/lpac/*)
       printf '%s\n' "compat"
       ;;
     "$LPAC_RELEASE_BASE_URL"/*|https://github.com/"$LPAC_REPO"/releases/latest/download/*|https://github.com/"$LPAC_REPO"/releases/download/*)

@@ -501,7 +501,7 @@ impl NotificationSender {
 
         let channel_type = channel.channel_type.label();
         let text = format!(
-            "{channel_type} 信使打卡成功✅\n服务支持：SimAdmin 开源项目\n简介：一站式 SIM/eSIM 蜂窝设备管理系统\nGitHub：https://github.com/3899/SimAdmin"
+            "{channel_type} 信使打卡成功✅\n服务支持：SimAdmin 开源项目\n简介：一站式 SIM/eSIM 蜂窝设备管理系统\nGitHub：https://github.com/Alano-i/SimAdmin"
         );
 
         self.send_text_to_channel(channel, &format!("{channel_type} 信使打卡成功✅"), &text)

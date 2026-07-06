@@ -25,7 +25,7 @@ const OTA_SERVICE_NAME: &str = "simadmin.service";
 const NM_CONF_DIR: &str = "/etc/NetworkManager/conf.d";
 const NM_CONF_PATH: &str = "/etc/NetworkManager/conf.d/99-simadmin-unmanaged-modem.conf";
 const NM_UNMANAGED_WWAN_CONFIG: &str = "[keyfile]\nunmanaged-devices=interface-name:wwan*\n";
-const LATEST_RELEASE_API: &str = "https://api.github.com/repos/3899/SimAdmin/releases/latest";
+const LATEST_RELEASE_API: &str = "https://api.github.com/repos/Alano-i/SimAdmin/releases/latest";
 const BEIJING_UTC_OFFSET_SECONDS: i32 = 8 * 60 * 60;
 const UPDATE_CHECK_HOURS: [u32; 2] = [9, 18];
 const OTA_HTTP_TIMEOUT_SECS: u64 = 30;
@@ -146,11 +146,69 @@ pub fn is_supported_ota_asset(name: &str) -> bool {
     lower.ends_with(".tar.gz") || lower.ends_with(".tgz") || lower.ends_with(".zip")
 }
 
+fn current_ota_arch() -> &'static str {
+    match std::env::consts::ARCH {
+        "aarch64" => "arm64",
+        "x86_64" => "amd64",
+        other => other,
+    }
+}
+
+fn ota_meta_arch_matches_current(meta_arch: &str) -> bool {
+    match current_ota_arch() {
+        "arm64" => matches!(
+            meta_arch,
+            "arm64"
+                | "aarch64"
+                | "aarch64-unknown-linux-musl"
+                | "aarch64-unknown-linux-gnu"
+        ),
+        "amd64" => matches!(
+            meta_arch,
+            "amd64"
+                | "x86_64"
+                | "x86_64-unknown-linux-musl"
+                | "x86_64-unknown-linux-gnu"
+        ),
+        arch => meta_arch == arch,
+    }
+}
+
 pub fn supported_release_asset(release: &OtaLatestReleaseResponse) -> Option<&OtaReleaseAsset> {
     release
         .assets
         .iter()
-        .find(|asset| is_supported_ota_asset(&asset.name))
+        .find(|asset| {
+            let name = asset.name.to_ascii_lowercase();
+            is_supported_ota_asset(&name)
+                && match current_ota_arch() {
+                    "arm64" => name.contains("arm64") || name.contains("aarch64"),
+                    "amd64" => name.contains("amd64") || name.contains("x86_64"),
+                    _ => false,
+                }
+        })
+        // Backward compatibility with old single-architecture releases.
+        .or_else(|| {
+            if current_ota_arch() != "arm64" {
+                return None;
+            }
+            release.assets.iter().find(|asset| {
+                is_supported_ota_asset(&asset.name)
+                    && !asset.name.to_ascii_lowercase().contains("arm64")
+                    && !asset.name.to_ascii_lowercase().contains("aarch64")
+                    && !asset.name.to_ascii_lowercase().contains("amd64")
+                    && !asset.name.to_ascii_lowercase().contains("x86_64")
+            })
+        })
+}
+
+pub fn prioritize_current_arch_asset(release: &mut OtaLatestReleaseResponse) {
+    let Some(selected_name) = supported_release_asset(release).map(|asset| asset.name.clone()) else {
+        return;
+    };
+    release
+        .assets
+        .sort_by_key(|asset| usize::from(asset.name != selected_name));
 }
 
 pub async fn fetch_latest_github_release(
@@ -439,8 +497,8 @@ fn validate_ota_package(meta: &OtaMeta) -> Result<OtaValidation, String> {
     // 前端目录存在即可（MD5 跨平台难以保持一致）
     let frontend_md5_match = true; // 跳过前端 MD5 验证
 
-    // 检查架构（只接受 musl）
-    let arch_match = meta.arch == "aarch64-unknown-linux-musl";
+    // 同时支持 ARM64/AMD64，以及对应的 GNU/musl Linux target。
+    let arch_match = ota_meta_arch_matches_current(&meta.arch);
 
     // 比较版本
     let is_newer = compare_versions(&meta.version, CURRENT_VERSION);
@@ -459,8 +517,9 @@ fn validate_ota_package(meta: &OtaMeta) -> Result<OtaValidation, String> {
         }
         if !arch_match {
             errors.push(format!(
-                "Arch mismatch: expected=aarch64-unknown-linux-musl, actual={}",
-                meta.arch
+                "Arch mismatch: expected={}, actual={}",
+                current_ota_arch(),
+                meta.arch,
             ));
         }
         Some(errors.join("; "))
@@ -524,6 +583,13 @@ fn beijing_offset() -> FixedOffset {
 
 /// 应用 OTA 更新
 pub fn apply_ota_update(restart_now: bool) -> Result<String, String> {
+    if std::env::var_os("SIMADMIN_CONTAINER").is_some() {
+        return Err(
+            "Container mode does not support in-place OTA; rebuild or pull the image instead"
+                .to_string(),
+        );
+    }
+
     let meta = read_pending_meta().ok_or_else(|| "No pending update".to_string())?;
 
     let staging_binary = format!("{}/simadmin", OTA_STAGING_DIR);
