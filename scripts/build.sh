@@ -7,7 +7,7 @@ set -euo pipefail
 # 切换到项目根目录
 cd "$(dirname "$0")/.."
 
-TARGET="aarch64-unknown-linux-musl"
+TARGET=""
 
 is_macos() {
     [[ "${OSTYPE:-}" == darwin* ]]
@@ -43,10 +43,47 @@ run_sed_in_place() {
 print_windows_notice() {
     if is_windows_bash; then
         echo "⚠️  检测到 Windows Bash 环境。"
-        echo "   完整 OTA 后端需要 Linux aarch64 musl 交叉工具链。"
+        echo "   完整 OTA 后端需要目标架构对应的 Linux musl 交叉工具链。"
         echo "   推荐在 WSL2 Ubuntu 中运行: ./scripts/build.sh --no-upx"
         echo ""
     fi
+}
+
+normalize_target() {
+    case "$1" in
+        arm64|aarch64)
+            echo "aarch64-unknown-linux-musl"
+            ;;
+        amd64|x86_64)
+            echo "x86_64-unknown-linux-musl"
+            ;;
+        aarch64-unknown-linux-musl|x86_64-unknown-linux-musl)
+            echo "$1"
+            ;;
+        *)
+            echo "❌ 错误: 不支持的目标架构/target: $1" >&2
+            echo "支持: arm64, amd64, aarch64-unknown-linux-musl, x86_64-unknown-linux-musl" >&2
+            exit 1
+            ;;
+    esac
+}
+
+host_arch() {
+    case "$(uname -m)" in
+        aarch64|arm64) echo "arm64" ;;
+        x86_64|amd64) echo "amd64" ;;
+        *)
+            echo "❌ 错误: 不支持的主机架构: $(uname -m)" >&2
+            exit 1
+            ;;
+    esac
+}
+
+target_asset_arch() {
+    case "$TARGET" in
+        aarch64-*) echo "arm64" ;;
+        x86_64-*) echo "amd64" ;;
+    esac
 }
 
 check_windows_node_lifecycle() {
@@ -78,6 +115,12 @@ for arg in "$@"; do
         --no-ota)
             SKIP_OTA=true
             ;;
+        --arch=*)
+            TARGET="$(normalize_target "${arg#*=}")"
+            ;;
+        --target=*)
+            TARGET="$(normalize_target "${arg#*=}")"
+            ;;
         --help|-h)
             echo "用法: ./scripts/build.sh [选项]"
             echo ""
@@ -86,17 +129,25 @@ for arg in "$@"; do
             echo "  --frontend-only  只构建前端"
             echo "  --no-upx         禁用 UPX 压缩 (默认启用)"
             echo "  --no-ota         跳过 OTA 包生成"
+            echo "  --arch=ARCH      目标架构: arm64 或 amd64（默认: 当前主机架构）"
+            echo "  --target=TRIPLE  Rust target（支持 aarch64/x86_64 Linux musl）"
             echo "  --help, -h       显示帮助信息"
             echo ""
             echo "示例:"
             echo "  ./scripts/build.sh                    # 构建 + UPX + OTA 包"
             echo "  ./scripts/build.sh --no-upx           # 不压缩"
             echo "  ./scripts/build.sh --no-ota           # 不生成 OTA 包"
+            echo "  ./scripts/build.sh --arch=amd64        # 构建 x86_64 包"
+            echo "  ./scripts/build.sh --arch=arm64        # 构建 ARM64 包"
             echo "  ./scripts/build.sh --frontend-only    # 仅构建前端"
             exit 0
             ;;
     esac
 done
+
+if [ -z "$TARGET" ]; then
+    TARGET="$(normalize_target "$(host_arch)")"
+fi
 
 print_windows_notice
 
@@ -175,20 +226,32 @@ if [ "$BUILD_BACKEND" = true ]; then
         fi
     fi
 
-    # 检查交叉编译器
-    if ! command -v aarch64-unknown-linux-musl-gcc &> /dev/null; then
-        echo "❌ 错误: 未找到 aarch64-unknown-linux-musl-gcc"
+    COMPILER="${TARGET}-gcc"
+    if [ "$(uname -s)" = "Linux" ]; then
+        case "$(uname -m):$TARGET" in
+            x86_64:x86_64-unknown-linux-musl|amd64:x86_64-unknown-linux-musl|aarch64:aarch64-unknown-linux-musl|arm64:aarch64-unknown-linux-musl)
+                if command -v musl-gcc >/dev/null 2>&1; then
+                    COMPILER="musl-gcc"
+                fi
+                ;;
+        esac
+    fi
+
+    # 检查目标架构的 musl 编译器
+    if ! command -v "$COMPILER" &> /dev/null; then
+        echo "❌ 错误: 未找到 $COMPILER"
         echo ""
-        echo "请安装 aarch64 Linux musl 交叉编译工具链。"
+        echo "请安装 $TARGET 对应的 Linux musl 交叉编译工具链。"
         if is_windows_bash; then
             echo "Windows 原生环境不建议直接构建后端 OTA 包，推荐使用 WSL2 Ubuntu。"
         fi
         echo ""
         echo "macOS 可参考:"
         echo "  brew tap messense/macos-cross-toolchains"
-        echo "  brew install aarch64-unknown-linux-musl"
+        echo "  brew install ${TARGET}"
         echo ""
-        echo "WSL/Linux 请安装可提供 aarch64-unknown-linux-musl-gcc 的交叉工具链，"
+        echo "WSL/Linux 请安装可提供 ${TARGET}-gcc 的交叉工具链；"
+        echo "在与目标相同架构的 Linux 上也可安装 musl-tools，"
         echo "或使用 GitHub Actions 的 OTA 打包工作流。"
         exit 1
     fi
@@ -196,10 +259,10 @@ if [ "$BUILD_BACKEND" = true ]; then
     cd backend
 
     # 设置交叉编译环境变量
-    export CC_aarch64_unknown_linux_musl=aarch64-unknown-linux-musl-gcc
-    export CXX_aarch64_unknown_linux_musl=aarch64-unknown-linux-musl-g++
-    export AR_aarch64_unknown_linux_musl=aarch64-unknown-linux-musl-ar
-    export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-unknown-linux-musl-gcc
+    TARGET_ENV="$(printf '%s' "$TARGET" | tr '[:lower:]-' '[:upper:]_')"
+    CC_ENV="CC_$(printf '%s' "$TARGET" | tr '-' '_')"
+    export "${CC_ENV}=${COMPILER}"
+    export "CARGO_TARGET_${TARGET_ENV}_LINKER=${COMPILER}"
     export SQLITE3_STATIC=1
     export LIBSQLITE3_SYS_USE_PKG_CONFIG=0
 
@@ -334,7 +397,8 @@ EOF
         mkdir -p release
         
         # 打包
-        OTA_FILE="release/simadmin_${VERSION}.tar.gz"
+        ASSET_ARCH="$(target_asset_arch)"
+        OTA_FILE="release/simadmin_${VERSION}_${ASSET_ARCH}.tar.gz"
         echo "打包 OTA..."
         cd "$OTA_TMP"
         tar -czf - meta.json simadmin www > "$OLDPWD/$OTA_FILE"

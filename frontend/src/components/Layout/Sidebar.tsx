@@ -421,7 +421,7 @@ export default function Sidebar({
       >
         <Box
           component="a"
-          href="https://github.com/3899/SimAdmin"
+          href="https://github.com/Alano-i/SimAdmin"
           target="_blank"
           rel="noopener noreferrer"
           sx={{
@@ -447,7 +447,7 @@ export default function Sidebar({
               transition: `opacity ${SIDEBAR_TRANSITION}, max-width ${SIDEBAR_TRANSITION}`,
             }}
           >
-            3899/SimAdmin
+            Alano-i/SimAdmin
           </Typography>
         </Box>
         <Box

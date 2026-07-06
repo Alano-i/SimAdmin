@@ -1,12 +1,12 @@
-<a href="https://github.com/3899/SimAdmin">
-  <img src="https://socialify.git.ci/3899/SimAdmin/image?description=1&descriptionEditable=%E9%9D%A2%E5%90%91%20Debian%20%E5%B9%B3%E5%8F%B0%E6%94%AF%E6%8C%81%20SIM%2FeSIM%20%E8%9C%82%E7%AA%9D%E8%AE%BE%E5%A4%87%E7%9A%84%E5%BC%80%E6%BA%90%20Web%20%E7%AE%A1%E7%90%86%E7%B3%BB%E7%BB%9F&font=Source%20Code%20Pro&logo=https%3A%2F%2Fgithub.com%2F3899%2FSimAdmin%2Fblob%2Fmain%2Ffrontend%2Fpublic%2Fsimadmin-logo.svg%3Fraw%3Dtrue&name=1&owner=1&pattern=Floating%20Cogs&theme=Auto" alt="SimAdmin" />
+<a href="https://github.com/Alano-i/SimAdmin">
+  <img src="https://socialify.git.ci/Alano-i/SimAdmin/image?description=1&descriptionEditable=%E9%9D%A2%E5%90%91%20Debian%20%E5%B9%B3%E5%8F%B0%E6%94%AF%E6%8C%81%20SIM%2FeSIM%20%E8%9C%82%E7%AA%9D%E8%AE%BE%E5%A4%87%E7%9A%84%E5%BC%80%E6%BA%90%20Web%20%E7%AE%A1%E7%90%86%E7%B3%BB%E7%BB%9F&font=Source%20Code%20Pro&logo=https%3A%2F%2Fgithub.com%2FAlano-i%2FSimAdmin%2Fblob%2Fmain%2Ffrontend%2Fpublic%2Fsimadmin-logo.svg%3Fraw%3Dtrue&name=1&owner=1&pattern=Floating%20Cogs&theme=Auto" alt="SimAdmin" />
 </a>
 
 <div align="center">
   <br/>
 
   <div>
-    <a href="https://github.com/3899/SimAdmin/releases">
+    <a href="https://github.com/Alano-i/SimAdmin/releases">
       <img 
         alt="Debian"
         src="https://img.shields.io/badge/Debian-%23D70A53?logo=debian&logoColor=white&style=flat-square" 
@@ -14,17 +14,17 @@
     </a >
     <a href="./LICENSE">
       <img
-        src="https://img.shields.io/github/license/3899/SimAdmin?style=flat-square"
+        src="https://img.shields.io/github/license/Alano-i/SimAdmin?style=flat-square"
       />
     </a >
-    <a href="https://github.com/3899/SimAdmin/releases">
+    <a href="https://github.com/Alano-i/SimAdmin/releases">
       <img
-        src="https://img.shields.io/github/v/release/3899/SimAdmin?style=flat-square"
+        src="https://img.shields.io/github/v/release/Alano-i/SimAdmin?style=flat-square"
       />
     </a >
-    <a href="https://github.com/3899/SimAdmin/releases">
+    <a href="https://github.com/Alano-i/SimAdmin/releases">
       <img
-        src="https://img.shields.io/github/downloads/3899/SimAdmin/total?style=flat-square"
+        src="https://img.shields.io/github/downloads/Alano-i/SimAdmin/total?style=flat-square"
       />  
     </a >
   </div>
@@ -75,6 +75,7 @@ SimAdmin 是一套面向 Debian 蜂窝 CPE、随身 WiFi、软路由类设备的
 - 后端：Rust + Axum + zbus，主要通过 ModemManager D-Bus 接口管理 modem，并在部分场景使用 `mmcli`、`qmicli` 或 AT 直连兜底。
 - 前端：React + Vite + Material UI，提供仪表盘、SIM 卡管理、蜂窝网络、设备网络、短信管理、通知中心、自动化中心和 OTA 更新页面。
 - 部署形态：后端二进制同进程托管前端 SPA，默认安装到 `/opt/simadmin`，通过 systemd 运行。
+- CPU 架构：发布与 OTA 支持 `amd64/x86_64` 和 `arm64/aarch64`。
 
 健康检查整体按支持 ModemManager 的 Linux 蜂窝设备组织，不同 modem 固件、内核、ModemManager 版本暴露的能力不同，具体功能以实际设备为准。
 
@@ -98,6 +99,30 @@ SimAdmin 是一套面向 Debian 蜂窝 CPE、随身 WiFi、软路由类设备的
 
 - 频段锁定依赖 ModemManager 暴露的 `SupportedBands` / `CurrentBands` / `SetCurrentBands`。
 - 小区锁定当前为后端内存态展示，不会下发真实硬件锁小区命令。
+
+## Docker 部署
+
+Docker 方式仅适用于 Linux 宿主机。SimAdmin 需要直接访问宿主机的
+system D-Bus、ModemManager、网络命名空间和 modem 设备，因此 Compose
+使用 host 网络和 privileged 模式：
+
+```bash
+docker compose up -d --build
+docker compose logs -f simadmin
+```
+
+镜像会按构建主机自动生成 AMD64 或 ARM64 版本；发布多架构镜像时可使用：
+
+```bash
+docker buildx build --platform linux/amd64,linux/arm64 -t your-registry/simadmin:latest --push .
+```
+
+后台默认访问地址为 `http://<宿主机IP>:3000`。数据保存在
+`simadmin-data` volume，lpac 保存在 `simadmin-lpac` volume。
+
+容器不能可靠接管宿主机 systemd 生命周期，因此容器模式会拒绝 Web OTA
+应用和系统重启请求；升级应重新拉取/构建镜像并重建容器。ModemManager/
+NetworkManager 服务重启等宿主机级操作也应在宿主机执行。
 
 ## 开源协议声明
 

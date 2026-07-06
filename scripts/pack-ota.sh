@@ -32,11 +32,32 @@ fi
 # 构建时间
 BUILD_TIME=$(TZ=Asia/Shanghai date +"%Y-%m-%dT%H:%M:%S+08:00")
 
-# 目标架构
-ARCH="aarch64-unknown-linux-musl"
+# 目标架构（可通过 --arch=arm64/amd64 或 TARGET=... 指定）
+TARGET="${TARGET:-}"
+for arg in "$@"; do
+    case "$arg" in
+        --arch=arm64|--arch=aarch64) TARGET="aarch64-unknown-linux-musl" ;;
+        --arch=amd64|--arch=x86_64) TARGET="x86_64-unknown-linux-musl" ;;
+        --target=*) TARGET="${arg#*=}" ;;
+        *) echo "❌ 未知参数: $arg"; exit 1 ;;
+    esac
+done
+if [ -z "$TARGET" ]; then
+    case "$(uname -m)" in
+        x86_64|amd64) TARGET="x86_64-unknown-linux-musl" ;;
+        aarch64|arm64) TARGET="aarch64-unknown-linux-musl" ;;
+        *) echo "❌ 不支持的主机架构: $(uname -m)"; exit 1 ;;
+    esac
+fi
+case "$TARGET" in
+    aarch64-unknown-linux-musl) ASSET_ARCH="arm64" ;;
+    x86_64-unknown-linux-musl) ASSET_ARCH="amd64" ;;
+    *) echo "❌ 不支持的 target: $TARGET"; exit 1 ;;
+esac
+ARCH="$TARGET"
 
 # 检查构建产物
-BINARY_PATH="backend/target/aarch64-unknown-linux-musl/release/simadmin"
+BINARY_PATH="backend/target/${TARGET}/release/simadmin"
 FRONTEND_DIR="frontend/dist"
 
 if [ ! -f "$BINARY_PATH" ]; then
@@ -110,7 +131,7 @@ echo ""
 mkdir -p release
 
 # 打包
-OTA_FILE="release/simadmin_${VERSION}.tar.gz"
+OTA_FILE="release/simadmin_${VERSION}_${ASSET_ARCH}.tar.gz"
 echo "📦 打包 OTA 更新包..."
 cd "$OTA_TMP"
 tar -czf - meta.json simadmin www > "$OLDPWD/$OTA_FILE"

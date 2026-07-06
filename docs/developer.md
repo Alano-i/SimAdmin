@@ -69,9 +69,15 @@ cargo run -- --host :: --port 3000
 ./scripts/build.sh --frontend-only
 ./scripts/build.sh --no-upx
 ./scripts/build.sh --no-ota
+./scripts/build.sh --arch=arm64
+./scripts/build.sh --arch=amd64
 ```
 
-*Windows 下建议在 WSL2 Ubuntu 中执行完整 OTA 构建。原生 PowerShell 不能直接运行 Bash 脚本；Git Bash 容易受 Node/npm/pnpm PATH 影响，完整 OTA 仍需要 `aarch64-unknown-linux-musl-gcc` 等 Linux 交叉编译工具链：*
+构建脚本默认选择当前主机架构，也可通过 `--arch` 显式选择。ARM64 使用
+`aarch64-unknown-linux-musl`，AMD64 使用 `x86_64-unknown-linux-musl`。
+跨架构构建时必须安装对应的 musl 交叉编译器。
+
+*Windows 下建议在 WSL2 Ubuntu 中执行完整 OTA 构建。原生 PowerShell 不能直接运行 Bash 脚本；Git Bash 容易受 Node/npm/pnpm PATH 影响：*
 
 ```bash
 ./scripts/build.sh --no-upx
@@ -81,9 +87,23 @@ cargo run -- --host :: --port 3000
 
 - 同步 `VERSION` 到 `backend/Cargo.toml` 和 `frontend/package.json`。
 - 使用 `pnpm-lock.yaml` 时通过 `pnpm install --frozen-lockfile`、`pnpm run lint` 和 `pnpm exec vite build` 构建前端到 `frontend/dist/`。
-- 交叉编译后端到 `backend/target/aarch64-unknown-linux-musl/release/simadmin`。
+- 编译后端到 `backend/target/<target>/release/simadmin`。
 - 可选使用 UPX 压缩后端二进制；未安装 UPX 时会自动跳过压缩。
-- 生成 `release/simadmin_<version>.tar.gz` OTA 包。
+- 生成 `release/simadmin_<version>_<arm64|amd64>.tar.gz` OTA 包。
+
+### Docker
+
+```bash
+docker compose build
+docker compose up -d
+```
+
+`Dockerfile` 是原生多阶段构建，分别构建 Vite 前端和 Rust 后端，因此
+`docker buildx build --platform linux/amd64,linux/arm64 ...` 可生成双架构镜像。
+运行时必须是 Linux，并需将宿主机 system D-Bus 和设备节点提供给容器；
+仓库中的 `compose.yaml` 已提供所需的 host network、privileged 和挂载配置。
+
+Docker 部署的升级单位是镜像；容器模式会拒绝 Web OTA 应用和系统重启请求。
 
 ### 通过 ADB 部署
 
